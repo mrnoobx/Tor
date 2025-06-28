@@ -1,6 +1,7 @@
-pyrogram==2.0.106
-tgcrypto
 aiohttp
-requests
 python-dotenv
-flask
+qbittorrent-api
+aria2p
+pyrogram
+tgcrypto
+Flask
