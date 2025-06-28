@@ -1,69 +1,66 @@
 import express from "express";
 import { Bot, webhookCallback } from "grammy";
+import WebTorrent from "webtorrent";
 import { config } from "dotenv";
 import fs from "fs";
-import os from "os";
 import path from "path";
-import { exec } from "child_process";
+import os from "os";
 import { fileURLToPath } from "url";
-import util from "util";
 
 config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const bot = new Bot(process.env.BOT_TOKEN);
-const execPromise = util.promisify(exec);
+const client = new WebTorrent();
 
-// === Commands ===
+// === Start Command ===
 bot.command("start", async (ctx) => {
   await ctx.reply(
-    "👋 *Welcome to the Magnet ➜ .torrent Bot!*\n\nSend a magnet link and I'll return a `.torrent` file. 🔥",
+    "👋 *Welcome to the Magnet ➜ .torrent Bot!*\n\nSend a magnet link and I'll generate a `.torrent` file for you.",
     { parse_mode: "Markdown" }
   );
 });
 
+// === Help Command ===
 bot.command("help", async (ctx) => {
-  await ctx.reply("📌 Just send a valid magnet link starting with `magnet:?xt=`");
+  await ctx.reply("📌 Just send a valid magnet link like:\n`magnet:?xt=...`", { parse_mode: "Markdown" });
 });
 
-// === Magnet Handler ===
+// === Handle Magnet Links ===
 bot.on("message:text", async (ctx) => {
-  const text = ctx.message.text.trim();
-  if (!text.startsWith("magnet:?xt=")) {
+  const magnet = ctx.message.text.trim();
+
+  if (!magnet.startsWith("magnet:?xt=")) {
     return ctx.reply("⚠️ Please send a valid magnet link.");
   }
 
-  const magnet = text;
-  const torrentPath = path.join(os.tmpdir(), `magnet_${Date.now()}.torrent`);
+  await ctx.reply("🧲 Fetching torrent metadata...");
 
   try {
-    await ctx.reply("🧲 Converting magnet...");
+    client.add(magnet, { destroyStoreOnDestroy: true }, async (torrent) => {
+      const torrentBuffer = torrent.torrentFile;
+      const filePath = path.join(os.tmpdir(), `${torrent.name}.torrent`);
 
-    const cmd = `webtorrent "${magnet}" --out "${os.tmpdir()}" --torrent`;
-    await execPromise(cmd);
+      fs.writeFileSync(filePath, torrentBuffer);
 
-    const torrentFile = fs.readdirSync(os.tmpdir()).find(file => file.endsWith(".torrent"));
-    if (!torrentFile) {
-      return ctx.reply("❌ Failed to create `.torrent` file.");
-    }
+      await ctx.replyWithDocument({
+        source: fs.createReadStream(filePath),
+        filename: `${torrent.name}.torrent`
+      });
 
-    const fullPath = path.join(os.tmpdir(), torrentFile);
-    await ctx.replyWithDocument({
-      source: fs.createReadStream(fullPath),
-      filename: "magnet.torrent"
+      torrent.destroy(); // Clean up
     });
-
   } catch (err) {
-    console.error("❌ Conversion error:", err);
+    console.error("Error:", err);
     await ctx.reply("🚨 Something went wrong while generating the `.torrent` file.");
   }
 });
 
-// === Web Server for Webhook ===
+// === Express Webhook Server ===
 const app = express();
 app.use(express.json());
 app.use(`/${bot.token}`, webhookCallback(bot));
-app.get("/", (_, res) => res.send("✅ Bot is up"));
+app.get("/", (_, res) => res.send("✅ Bot is alive"));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Listening on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
