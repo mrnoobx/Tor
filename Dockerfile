@@ -1,10 +1,9 @@
-FROM python:3.10
-
-RUN apt update && apt install -y aria2 ffmpeg
+FROM python:3.11-slim
 
 WORKDIR /app
+
 COPY . /app
 
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-CMD bash -c "aria2c --enable-rpc --rpc-listen-all=true --rpc-allow-origin-all=true --rpc-secret=123 & python3 bot.py"
+CMD ["python", "bot.py"]
